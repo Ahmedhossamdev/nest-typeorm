@@ -6,6 +6,7 @@ import { Item } from "./entities/item.entity";
 import { InjectRepository } from "@nestjs/typeorm";
 import { CreateCommentDto } from "./dto/create-comment.dto";
 import { Comment } from "./entities/comment.entity";
+import { Tag } from "./entities/tag.entity";
 
 @Injectable()
 export class ItemsService {
@@ -14,6 +15,8 @@ export class ItemsService {
     private itemsRepository: Repository<Item>,
     @InjectRepository(Comment)
     private commentsRepository: Repository<Comment>,
+    @InjectRepository(Tag)
+    private tagsRepository: Repository<Tag>,
     private readonly entityManager: EntityManager,
   ) {}
 
@@ -36,7 +39,7 @@ export class ItemsService {
       where: {
         id,
       },
-      relations: { listing: true, comments: true },
+      relations: { listing: true, comments: true, tags: true },
     });
   }
 
@@ -73,29 +76,82 @@ export class ItemsService {
   // const item = await this.itemsRepository.update(id, {
   //   ...updateItemDto,
   // });
+
+  // Recommended way
+  // async update(id: number, updateItemDto: UpdateItemDto) {
+  //   await this.entityManager.transaction(async () => {
+  //     const { comments, ...updateData } = updateItemDto;
+  //     // find the item
+  //     const item = await this.itemsRepository.findOne(id);
+  //     if (!item) {
+  //       throw new NotFoundException(`Item #${id} not found`);
+  //     }
+
+  //     // update the item's properties
+  //     Object.assign(item, updateData);
+
+  //     const tagContent = `${Math.random()}`;
+
+  //     // create and save the new tag
+  //     const newTag = await this.tagsRepository.save({ content: tagContent });
+
+  //     // associate the new tag with the item
+  //     if (!Array.isArray(item.tags)) {
+  //       item.tags = [newTag];
+  //     } else {
+  //       item.tags.push(newTag);
+  //     }
+
+  //     // save the item with the new tag
+  //     await this.itemsRepository.save(item);
+
+  //     // if there are comments, create them
+  //     if (comments) {
+  //       const createdComments = comments.map((comment) =>
+  //         this.commentsRepository.create({ ...comment, item }),
+  //       );
+
+  //       // save the comments
+  //       await this.commentsRepository.save(createdComments);
+  //     }
+
+  //     return item;
+  //   });
+  // }
+
   async update(id: number, updateItemDto: UpdateItemDto) {
-    const { comments, ...updateData } = updateItemDto;
+    await this.entityManager.transaction(async () => {
+      const { comments, ...updateData } = updateItemDto;
+      // update the item
+      const item = await this.itemsRepository.preload({ id, ...updateData });
+      if (!item) {
+        throw new NotFoundException(`Item #${id} not found`);
+      }
 
-    // update the item
-    const item = await this.itemsRepository.preload({ id, ...updateData });
+      const tagContent = `${Math.random()}`;
 
-    if (!item) {
-      throw new NotFoundException(`Item #${id} not found`);
-    }
+      const newTag = await this.tagsRepository.save({
+        content: tagContent,
+      });
 
-    await this.itemsRepository.save(item);
+      if (!item.tags) {
+        item.tags = [newTag];
+      } else {
+        item.tags.push(newTag);
+      }
 
-    // if there are comments, create them
+      await this.itemsRepository.save(item);
 
-    if (comments) {
-      const createdComments = comments.map((comment) =>
-        this.commentsRepository.create({ ...comment, item }),
-      );
+      // if there are comments, create them
+      if (comments) {
+        const createdComments = comments.map((comment) =>
+          this.commentsRepository.create({ ...comment, item }),
+        );
 
-      await this.commentsRepository.save(createdComments);
-    }
-
-    return item;
+        await this.commentsRepository.save(createdComments);
+      }
+      return item;
+    });
   }
 
   async remove(id: number) {
