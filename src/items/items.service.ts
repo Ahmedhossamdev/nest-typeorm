@@ -76,8 +76,6 @@ export class ItemsService {
   async update(id: number, updateItemDto: UpdateItemDto) {
     const { comments, ...updateData } = updateItemDto;
 
-    console.log(updateData);
-
     // update the item
     const item = await this.itemsRepository.preload({ id, ...updateData });
 
